@@ -8,6 +8,9 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,13 +19,32 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
       - uses: android-actions/setup-android@v3
+
+      - name: Compilar o agente GATEALL (3 arquiteturas)
+        working-directory: app/src/main/assets/agent
+        run: |
+          go mod tidy || true
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o gateall-agent-arm64 main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm   go build -ldflags="-s -w" -o gateall-agent-arm   main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o gateall-agent-x86_64 main.go
+          echo "--- binarios gerados ---"
+          ls -la gateall-agent-*
 
       - name: Gradle wrapper
         run: gradle wrapper --gradle-version 8.7
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
+
+      - name: Conferir se os binarios entraram no APK
+        run: |
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep gateall-agent || \
+            (echo "ERRO: agente nao foi para o APK" && exit 1)
 
       - uses: actions/upload-artifact@v4
         with:
